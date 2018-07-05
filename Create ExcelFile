@@ -1,0 +1,123 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using MySql.Data.MySqlClient;
+using OfficeOpenXml;
+using System.Net;
+using System.IO;
+
+namespace ChangeBoxView
+{
+    public partial class Form1 : Form
+    {
+        private ExcelWorksheet ObjXLDocument;
+        string Destination_Path;
+        public Form1()
+        {
+            InitializeComponent();
+        }
+        //static string connection1 = "server=000.0.0.00;port=3306;database=va4apr_sercher;user id = development; password=password;";
+        static string connection2 = "server=192.168.100.54;port=3306;database=final_26;user id = development; password=Admin@123";
+
+        MySqlConnection ObjCon = new MySqlConnection(connection2);
+        MySqlCommand cmd;
+        MySqlDataAdapter adapt;
+        DataTable dt;
+
+        public string getComponentFolderid()
+        {
+            dt = new DataTable();
+            ObjCon.ChangeDatabase("final_26");
+            string GetComponentFolderid_Query = "SELECT group_concat(folderid) folderid FROM fd_eng_master where is_module_level=1 and folderid>0";
+           // string GetComponentFolderid_Query = "select folderid from files limit 10";
+            cmd = new MySqlCommand(GetComponentFolderid_Query,ObjCon);
+            if(ObjCon.State == ConnectionState.Closed)
+            {
+                ObjCon.Open();
+            }
+            byte[] result =  cmd.ExecuteScalar() as byte[];
+
+            string folderid = ByteToString(result);
+            Console.WriteLine("String: == " + folderid);
+            return folderid;
+        }
+       
+        private DataTable GetIncorrectRecords()
+        {
+            dt = new DataTable();
+            if (ObjCon.State == ConnectionState.Closed)
+            {
+                ObjCon.Open();
+            }
+            string folderids = getComponentFolderid();
+            ObjCon.ChangeDatabase("va4apr_sercher");
+            string Getincorrectrecords_Query = "select * from folder where BoxID > 0 and ParentFolderID in " + "(" + folderids + ")";
+            cmd = new MySqlCommand(Getincorrectrecords_Query, ObjCon);
+            adapt = new MySqlDataAdapter(cmd);
+            adapt.Fill(dt);
+            ObjCon.Close();
+            return dt;
+        }
+
+        private string ByteToString(byte[] bytes)
+        {
+            string str = "";
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                str = str + Convert.ToChar(bytes[i]);
+            }
+            return str;
+        }
+
+        public void ExportExcelFromDt(DataTable dtExcel)
+
+        {
+            if (dtExcel.Rows.Count > 0)
+            {
+                ExcelPackage pkg = new ExcelPackage();
+                ObjXLDocument = pkg.Workbook.Worksheets.Add("BoxViewData");
+                ExportTable(dtExcel, ObjXLDocument);
+                if (!Directory.Exists(Destination_Path))
+                {
+                    Directory.CreateDirectory(Destination_Path);
+                }
+                string FileName = Destination_Path + "\\" + "BoxViewData"  + ".xlsx";
+                FileStream fs = new FileStream(FileName, FileMode.Append);
+                pkg.SaveAs(fs);
+                fs.Close();
+            }
+        }
+        public void ExportTable(DataTable Table, ExcelWorksheet ObjEX)
+        {
+            ObjEX.InsertRow(1, 1);
+            int c = 0;
+            for (int i = 0; i <= Table.Columns.Count - 1; i++)
+            {
+                ObjEX.InsertColumn(i + 1, 1);
+                ObjEX.Cells[1, i + 1].Value = Table.Columns[i].ColumnName;
+            }
+
+            foreach (DataRow row in Table.Rows)
+            {
+                ObjEX.InsertRow(c + 2, 1);
+                for (int j = 0; j <= Table.Columns.Count - 1; j++)
+                    ObjEX.Cells[c + 2, j + 1].Value = WebUtility.HtmlDecode(Convert.ToString(row[j]));
+                c += 1;
+            }
+        }
+
+        private void GetRecords_Click(object sender, EventArgs e)
+        {
+            Destination_Path = textBox1.Text;
+            GetIncorrectRecords();
+            DataTable dt1 = GetIncorrectRecords();
+            ExportExcelFromDt(dt1);
+        }
+    }
+}
