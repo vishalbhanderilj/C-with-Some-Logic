@@ -1,0 +1,428 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Diagnostics;
+using System.Linq;
+using System.ServiceProcess;
+using System.Text;
+using System.Threading.Tasks;
+using System.IO;
+using System.Configuration;
+
+namespace FLYDocsCleanUP
+{
+    public partial class FLYdocsCleanUP : ServiceBase
+    {
+        string Source_Path;
+        string[] SourcePath_Array;
+        string[] MoveBySizeSourcePathArray;
+        string SizeSourcePath;
+        string Destination_Path;
+        string newDestinationpath;
+        int Move_Interval;
+        int Delete_Interval;
+        int TimerMoveBySize_Interval;
+        int Filesize;
+        DateTime CheckDate;
+
+        public FLYdocsCleanUP()
+        {
+            InitializeComponent();
+        }
+
+        protected override void OnStart(string[] args)
+        {
+            ReadConfig();
+
+            //timer for Daily Check and Move or delete function
+            if (CheckDate != DateTime.Today.Date)
+            {
+                for (int i = 0; i < SourcePath_Array.Length; i++)
+                {
+                    Source_Path = SourcePath_Array[i];
+                    if (!string.IsNullOrEmpty(Source_Path))
+                    {
+                        Destination_Path = preparedestpath(Source_Path,Destination_Path);
+                        ManageDirectory(SourcePath_Array[i]);
+                        Destination_Path = newDestinationpath;
+                    }
+                }
+
+                DeleteFile(Destination_Path);
+
+                CheckDate = DateTime.Today.Date;
+            }
+
+            //timer for Hours for move files by hours.
+
+            TimerBySize.Interval = TimerMoveBySize_Interval * 60 * 60 * 1000;
+            TimerBySize.Enabled = true;
+
+        }
+
+        private void ReadConfig()
+        {
+            SourcePath_Array = ConfigurationManager.AppSettings.AllKeys.Where(key => key.StartsWith("MoveByDateTimeSourcePath")).Select(key => ConfigurationManager.AppSettings[key]).ToArray();
+            MoveBySizeSourcePathArray = ConfigurationManager.AppSettings.AllKeys.Where(key => key.StartsWith("MoveBySizeSourcePath")).Select(key => ConfigurationManager.AppSettings[key]).ToArray();
+            Destination_Path = ConfigurationManager.AppSettings["Destination_Path"];
+            newDestinationpath = Destination_Path;
+            if (string.IsNullOrEmpty(Destination_Path) == true)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error For Missing DestinationPath");
+            }
+            string strMove = ConfigurationManager.AppSettings["FileMove_Interval"];
+            if (!int.TryParse(strMove, out Move_Interval))
+            {
+                Move_Interval = 7;
+            }
+            string strDelete = ConfigurationManager.AppSettings["FileDelete_Interval"];
+            if (!int.TryParse(strDelete, out Delete_Interval))
+            {
+                Delete_Interval = 15;
+            }
+
+            string strMoveBySizeIntreval = ConfigurationManager.AppSettings["TimerMoveBySize_Interval"];
+            if (!int.TryParse(strMoveBySizeIntreval, out TimerMoveBySize_Interval))
+            {
+                TimerMoveBySize_Interval = 3; //TiMerMoveBySize In Hours
+            }
+            string strFileSize = ConfigurationManager.AppSettings["FileSize"];
+            if (!int.TryParse(strFileSize, out Filesize))
+            {
+                Filesize = 500;  //FileSize In MB
+            }
+        }
+        private string preparedestpath(string sourcepath,string destinationpath)
+        {
+            string destpath = "";
+            string parentdir = Directory.GetParent(sourcepath).Name;
+            string childdir = new DirectoryInfo(sourcepath).Name;
+            destpath = Path.Combine(destpath, DateTime.Now.ToString("yyyy-MM-dd_HH-MM"), parentdir, childdir);
+            createDir(destpath);
+            return destpath;
+
+
+        }
+        private void createDir(string directorypath)
+        {
+            if (!Directory.Exists(directorypath))
+            {
+                Directory.CreateDirectory(directorypath);
+            }
+        }
+        private void ManageDirectory(string sourcepath)
+        {
+            string destinationpath;
+            string s1path;
+            try
+            {
+                DirectoryInfo di = new DirectoryInfo(sourcepath);
+                DirectoryInfo[] dirArr = di.GetDirectories();
+
+                if (di.GetFiles().Length > 0)
+                {
+                    MovefilesByDate(sourcepath, Destination_Path);
+                }
+
+                for (int i = 0; i < dirArr.Length; i++)
+                {
+                    destinationpath = Path.Combine(Destination_Path, dirArr[i].ToString());
+                    s1path = Path.Combine(sourcepath, dirArr[i].ToString());
+                    if (!Directory.Exists(destinationpath))
+                    {
+                        Directory.CreateDirectory(destinationpath);
+                    }
+                    MovefilesByDate(s1path, destinationpath);
+                    ManageNestedDirectory(s1path, destinationpath);
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in CreateDirectory function : " + ex.Message);
+                //handle exeption with log
+            }
+        }
+
+        private void MovefilesByDate(string sourcepath, string DestPath)
+        {
+            try
+            {
+                if (Directory.Exists(sourcepath))
+                {
+                    string[] files = Directory.GetFiles(sourcepath);
+
+                    if (files.Length > 0)
+                    {
+                        for (int i = 0; i < files.Length; i++)
+                        {
+                            if (isDueForMove(files[i]))
+                            {
+                                try
+                                {
+                                    string stringfilename = Path.GetFileName(files[i]);
+                                    string fdestination = Path.Combine(DestPath, stringfilename);
+                                    File.Move(files[i], fdestination);
+                                    HTech.Tools.Debugging.Sentinel.Trace(files[i] + sourcepath + fdestination);
+                                }
+                                catch (Exception ex) { HTech.Tools.Debugging.Sentinel.Trace(files[i] + sourcepath + ex.ToString()); }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in Movefiles function : " + ex.Message);
+                //handle exeption with log
+            }
+        }
+        private Boolean isDueForMove(string Filepath)
+        {
+            bool isDuetime = false;
+            DateTime fileCreationtime = File.GetCreationTime(Filepath);
+            double days = DateTime.Now.Subtract(fileCreationtime).Days;
+            if (days > Move_Interval)
+            {
+                isDuetime=true;
+            }
+            return isDuetime;
+        }
+        private void ManageNestedDirectory(string NSourcePath, string NDestPath)
+        {
+            try
+            {
+                string Ndestinationpath;
+                string Nest_Sourcepath;
+                DirectoryInfo nesteddir = new DirectoryInfo(NSourcePath);
+                DirectoryInfo[] nestedDiArr = nesteddir.GetDirectories();
+
+                for (int i = 0; i < nestedDiArr.Length; i++)
+                {
+                    Ndestinationpath = Path.Combine(NDestPath, nestedDiArr[i].ToString());
+                    if (!Directory.Exists(Ndestinationpath))
+                    {
+                        Directory.CreateDirectory(Ndestinationpath);
+                        Console.WriteLine("Directory created at ::" + Ndestinationpath);
+                    }
+
+                    Nest_Sourcepath = Path.Combine(NSourcePath, nestedDiArr[i].ToString());
+                    MovefilesByDate(Nest_Sourcepath, Ndestinationpath);
+                    ManageNestedDirectory(Nest_Sourcepath, Ndestinationpath);
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in ManageNestedDirectory function : " + ex.Message);
+                //handle exeption
+            }
+        }
+
+        
+        // Code for Move Directory,Nested Directory and File Bysize
+        private void ManageDirectoryByFileSize(string sourcepath)
+        {
+            string destinationpath;
+            string s1path;
+            try
+            {
+                DirectoryInfo di = new DirectoryInfo(sourcepath);
+                DirectoryInfo[] diArr = di.GetDirectories();
+
+                if (di.GetFiles().Length > 0)
+                {
+                    MoveByfileSize(sourcepath, Destination_Path);
+                }
+
+                for (int i = 0; i < diArr.Length; i++)
+                {
+                    destinationpath = Path.Combine(Destination_Path, diArr[i].ToString());
+                    s1path = Path.Combine(sourcepath, diArr[i].ToString());
+                    if (!Directory.Exists(destinationpath))
+                    {
+                        Directory.CreateDirectory(destinationpath);
+                    }
+
+                    MoveByfileSize(s1path, destinationpath);
+                    ManageNestedDirectoryByFileSize(s1path, destinationpath);
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in CreateDirectoryByFileSize function : " + ex.Message);
+                //handle exeption
+            }
+        }
+        private void MoveByfileSize(string sourcepath, string DestPath)
+        {
+            try
+            {
+                if (Directory.Exists(sourcepath))
+                {
+                    string[] files = Directory.GetFiles(sourcepath);
+                    if (files.Length > 0)
+                    {
+                        for (int i = 0; i < files.Length; i++)
+                        {
+                            if (isDueForMovebyFileSize(files[i]))
+                            {
+                                string stringfilename = Path.GetFileName(files[i]);
+                                string fdestination = Path.Combine(DestPath, stringfilename);
+                                File.Move(files[i], fdestination);
+                                HTech.Tools.Debugging.Sentinel.Trace(files[i] + sourcepath + fdestination);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in MoveByfilesSize function : " + ex.Message);
+                //Handle Exeptuion with Sentinal
+            }
+
+        }
+        private Boolean isDueForMovebyFileSize(string Filepath)
+        {
+            bool HasOverSize = false;
+            long filelength = new FileInfo(Filepath).Length;
+            double FMB = filelength * 0.000001;
+            int FileSizeMB = Convert.ToInt32(FMB);
+
+            if (FileSizeMB > Filesize)
+            {
+                HasOverSize = true;
+            }
+
+            return HasOverSize;
+        }
+        //create nested directory by file size
+        private void ManageNestedDirectoryByFileSize(string NSourcePath, string NDestPath)
+        {
+            try
+            {
+                string Ndestinationpath;
+                string Nest_Sourcepath;
+
+                DirectoryInfo nesteddir = new DirectoryInfo(NSourcePath);
+                DirectoryInfo[] nestedDiArr = nesteddir.GetDirectories();
+
+                for (int i = 0; i < nestedDiArr.Length; i++)
+                {
+                    Ndestinationpath = Path.Combine(NDestPath, nestedDiArr[i].ToString());
+                    if (!Directory.Exists(Ndestinationpath))
+                    {
+                        Directory.CreateDirectory(Ndestinationpath);
+                    }
+
+                    Nest_Sourcepath = Path.Combine(NSourcePath, nestedDiArr[i].ToString());
+                    MoveByfileSize(Nest_Sourcepath, Ndestinationpath);
+                    ManageNestedDirectoryByFileSize(Nest_Sourcepath, Ndestinationpath);
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in ManageNestedDirectoryByFileSize function : " + ex.Message);
+                //handle Exeption
+            }
+        }
+
+       
+        
+
+        private void DeleteFile(string deletesourcepath)
+        {
+            checkFiles(deletesourcepath);
+            checkDirectory(deletesourcepath);
+        }
+
+        private void checkFiles(string filepath)
+        {
+            try
+            {
+                if (Directory.Exists(filepath))
+                {
+                    string[] files = Directory.GetFiles(filepath);
+                    if (files.Length > 0)
+                    {
+                        for (int i = 0; i < files.Length; i++)
+                        {
+                            if (isDueForDelete(files[i]))
+                            {
+                                //File.Delete(files[i]); 'Uncomment Later
+                                HTech.Tools.Debugging.Sentinel.Trace(files[i] + filepath);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in checkFiles function : " + ex.Message);
+                //log for exeption file
+            }
+        }
+
+        private Boolean isDueForDelete(string Filepath)
+        {
+            DateTime filecreationtime = File.GetCreationTime(Filepath);
+            double days = DateTime.Now.Subtract(filecreationtime).Days;
+            HTech.Tools.Debugging.Sentinel.Trace("Compare : " + Filepath + ":" + days + ":" + Delete_Interval);
+            if (days > Delete_Interval)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private void checkDirectory(string DirectoryPath)
+        {
+            try
+            {
+                string DirPath;
+                if (Directory.Exists(DirectoryPath))
+                {
+                    DirectoryInfo di = new DirectoryInfo(DirectoryPath);
+                    DirectoryInfo[] diArr = di.GetDirectories();
+
+                    if (diArr.Length > 0)
+                    {
+                        for (int i = 0; i < diArr.Length; i++)
+                        {
+                            DirPath = Path.Combine(DirectoryPath, diArr[i].ToString());
+                            DeleteFile(DirPath);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                HTech.Tools.Debugging.Sentinel.Trace("Error in checkDirectory function : " + ex.Message);
+                //handle exeption with log file
+            }
+        }
+
+        private void TimerBySize_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            TimerBySize.Stop();
+            for (int i = 0; i < MoveBySizeSourcePathArray.Length; i++)
+            {
+                SizeSourcePath = MoveBySizeSourcePathArray[i];
+                if (!string.IsNullOrEmpty(SizeSourcePath))
+                {
+                    Destination_Path = preparedestpath(SizeSourcePath, Destination_Path);
+                    ManageDirectoryByFileSize(MoveBySizeSourcePathArray[i]);
+                    Destination_Path = newDestinationpath;
+                }
+            }
+            TimerBySize.Start();
+        }
+
+        protected override void OnStop()
+        {
+            
+        }
+
+    }
+}
