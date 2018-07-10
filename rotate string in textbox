@@ -1,0 +1,22 @@
+private void rotateLeft()
+        {
+            string firstelement,remainingstring,newString;
+
+            firstelement = s1.Substring(0,1);
+            remainingstring = s1.Remove(0,1);
+            newString = remainingstring.Insert(remainingstring.Length,firstelement);
+            s1 = newString;
+            textBox2.Text = newString;
+        }
+        private void rotateRight()
+        {
+            string lastelement, remainingstring, newstring;
+            lastelement = s1.Substring(s1.Length-1,1);
+            Console.WriteLine("Lastelement"+lastelement);
+            remainingstring = s1.Remove(s1.Length-1,1);
+            Console.WriteLine("Remaining element::"+remainingstring);
+            newstring = remainingstring.Insert(0,lastelement);
+            s1 = newstring;
+            textBox2.Text = newstring;
+
+        }
