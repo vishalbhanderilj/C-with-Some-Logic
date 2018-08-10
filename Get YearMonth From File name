@@ -1,0 +1,103 @@
+public string GetYearMonth(string filename)
+        {
+            string finalyearMonth = "0";
+            try
+            {
+
+                int year;
+                int monthnumber;
+                int CurrentYear = DateTime.Now.Year;
+                string[] splitFilenameArray = filename.Split();
+                string[] months = new string[] { "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december" };
+                for (int i = 0; i < splitFilenameArray.Length; i++)
+                {
+                    if (months.Contains(splitFilenameArray[i]))
+                    {
+                        monthnumber = Array.FindIndex(months, row => row.Contains(splitFilenameArray[i])) + 1;
+                        int Year = 0;
+                        if ((i + 1) < splitFilenameArray.Length)
+                        {
+                            int.TryParse(Convert.ToString(splitFilenameArray[i + 1]), out Year);
+                        }
+
+                        if (Year > 0 && Year <= CurrentYear)
+                        {
+                            monthnumber = DateTime.ParseExact(splitFilenameArray[i], "MMMM", System.Globalization.CultureInfo.InvariantCulture).Month;
+                            string MonthNumber = monthnumber.ToString("00");
+                            finalyearMonth = Year.ToString() + MonthNumber.ToString();
+                        }
+                    }                   
+                }
+
+            }
+            
+            public string GetYearMonth1(string filename)
+        {
+            string YearMonth = "0";
+            int CurrentYear = DateTime.Now.Year;
+            string ReplaceFilename = filename.ToLower().Replace("-", " ").Replace("_", " ").Replace(".", " ").Replace("=", " ");
+            while (ReplaceFilename.Contains("  "))
+            {
+                ReplaceFilename = ReplaceFilename.Replace("  ", " ");
+            }
+            try
+            {
+                int year;
+                int month;
+                string[] SplitFileNameArray = ReplaceFilename.Split();
+                string[] Month = new string[] { "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december" };
+                for (int i = 0; i < SplitFileNameArray.Length; i++)
+                {
+                    for (int j = 0; j < Month.Length; j++)
+                    {
+                        if (Month[j] == SplitFileNameArray[i])
+                        {
+                            if (i < SplitFileNameArray.Length - 1)
+                            {
+                                try
+                                {
+                                    if (int.TryParse(SplitFileNameArray[i + 1], out year))
+                                    {
+                                        for (int k = 1970; k <= CurrentYear; k++)
+                                        {
+                                            if (k == int.Parse(SplitFileNameArray[i + 1]))
+                                            {
+                                                year = k;
+                                                month = DateTime.ParseExact(SplitFileNameArray[i], "MMMM", System.Globalization.CultureInfo.InvariantCulture).Month;
+                                                string MonthNumber = month.ToString("00");
+                                                YearMonth = k + MonthNumber;
+
+                                            }
+                                            else
+                                            {
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        continue;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    MessageBox.Show("Exeption Occure at" + ex.Message);
+                                }
+
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Exeption Occure at::" + ex.Message);
+            }
+
+            return YearMonth;
+        }
