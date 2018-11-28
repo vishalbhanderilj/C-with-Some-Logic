@@ -1,0 +1,30 @@
+# C-with-Some-Logic
+ public DataTable Compretwotables(DataTable first,DataTable Second)
+        {
+            DataTable newtable = new DataTable();
+
+            
+            for(int i = 0; i < first.Rows.Count && i < Second.Rows.Count; i++)
+            {
+                for (int j = 0; j < first.Columns.Count && j <Second.Columns.Count; j++)
+                {
+                    //string columnname = first.Columns[j].ColumnName;
+                    string val = first.Rows[i][first.Columns[j].ColumnName].ToString();
+                    string secondval = Second.Rows[i][Second.Columns[j].ColumnName].ToString();
+                    if(val != secondval)
+                    {
+                        DataColumnCollection column = newtable.Columns;
+                        if (!column.Contains(first.Columns[j].ColumnName))
+                        {
+                            newtable.Columns.Add(first.Columns[j].ColumnName, first.Columns[j].DataType);
+                        }
+                            
+                            
+                        
+                    }
+                }
+            }
+
+            
+            return newtable;
+        }
